@@ -275,7 +275,7 @@ def main():
     # Instantiate the sudoku
     sudoku = parse_input_file(args.filename)
     if not sudoku:
-        print("Please try again.")
+        print("Could not instantiate a sudoku. Please try again.")
         return
 
     if(args.v):
@@ -290,8 +290,10 @@ def main():
     if not sudoku.check_properties():
         sudoku.solve_backtrack()
 
+    # If the solver has returned but the puzzle is not complete something wonky happened
     if not sudoku.check_properties():
         print("The solver failed to find an optimal solution.")
+        print("Please try again with a simpler puzzle.")
 
     else:
         write_output_file(sudoku,args.filename)
@@ -300,7 +302,7 @@ def main():
             print("The final configuration of the puzzle:")
             print(sudoku)
 
-    print("The solver has completed. Please find the solution in " + "solution_" + args.filename)
+        print("The solver has completed. Please find the solution in " + "solution_" + args.filename)
         
 if __name__ == "__main__":
     main()
