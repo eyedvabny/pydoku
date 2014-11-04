@@ -52,4 +52,12 @@ For the situations when the optimal choice cannot be determined from existing co
 
 The algorithm is not the optimal sudoku solver due to recursion and backtracking, but it is quite fast on a 9x9 grid and can solve even "hard" puzzles with fewer than 20 provided clues.
 
+## Coding Decisions
+
+The solver was developed and tested under _Python 2.7.8_ provided by Continuum Analytics. All of the code is contained in a single file to simplify portability. The solver is a single class that keeps track of all grid values, checks for solution validity, and performs the constraint search. File reading and writing are stand-alone functions so that the solving implementation is stand-alone from the textual representation in the files. No 3rd party libraries were used in the implementation to minimize dependencies.
+
+## Future Goals
+
+There are sanity checks throughout the code, but a complete unit-testing suite should be written to check for any corner cases. The logic for finding a cell's peers should be refactored as well; it works well but is a bit on the ugly side. Since there are a lot of methods for solving sudokus, the code can be further augmented to allow for selection of the underlying algorithm.
+
 CC Eugene Yedvabny, November 2014
