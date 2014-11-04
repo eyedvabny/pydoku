@@ -9,24 +9,32 @@ import argparse
 #
 
 class Sudoku:
-    def __init__(self, n_row = 9, n_col = 9, values = []):
+    def __init__(self, n_row = 9, n_col = 9):
         """Initialize an n x m (9x9) sudoku grid."""
         self.n_row = n_row
         self.n_col = n_col
         self.rank = int(sqrt(n_col))
-        self.values = values
+
+        # Array of grid values
+        self.values = [0 for i in xrange(n_row*n_col)]
+
+        # Dict of possible values that a square can take
+        self.choices = dict((ind,range(1,n_col+1)) for ind in xrange(n_row*n_col))
+
+        # Dict of indices that are neighbors of
+        self.peers = dict((ind,self.find_peers(ind)) for ind in xrange(n_row*n_col))
 
     def __str__(self):
-        """Print representation of the sudoku"""
+        """Print representation of the sudoku."""
         print_sud = []
 
-        for row in range(self.n_row):
+        for row in xrange(self.n_row):
             # Header bar
             print_sud.append("\t" + "-"*2*self.n_col + "-\n")
             
             print_sud.append("\t")
 
-            for col in range(self.n_col):
+            for col in xrange(self.n_col):
                 val = self.values[row*self.n_col + col]
                 print_sud.append("|{}".format(val))
 
@@ -39,33 +47,30 @@ class Sudoku:
         return "".join(print_sud)
 
     def fetch_row(self,ind):
-        """Get all elements in a specified row"""
+        """Get all elements in a specified row."""
 
         start = ind * self.n_col
         return self.values[start : start + self.n_col]
 
     def fetch_rows(self):
-        """Generator to get all puzzle rows"""
+        """Generator to get all puzzle rows."""
 
-        for i in range(self.n_row):
+        for i in xrange(self.n_row):
             yield self.fetch_row(i)
 
     def fetch_col(self,ind):
-        """Get all elements in a specified column"""
+        """Get all elements in a specified column."""
 
-        col = []
-        for i in range(self.n_row):
-            col.append(self.values[i * self.n_col + ind])
-        return col
+        return [self.values[r*self.n_col + ind] for r in xrange(self.n_row)]
 
     def fetch_cols(self):
-        """Generator to get all puzzle columns"""
+        """Generator to get all puzzle columns."""
 
-        for i in range(self.n_col):
+        for i in xrange(self.n_col):
             yield self.fetch_col(i)
 
     def fetch_block(self,ind):
-        """Get all elements in a specified block"""
+        """Get all elements in a specified block."""
 
         # Counting by row starting from the top left
         # calculate the block location within the overall puzzle
@@ -73,21 +78,21 @@ class Sudoku:
         base_col = ind % self.rank * self.rank
 
         block = []
-        for i in range(self.rank):
-            for j in range(self.rank):
+        for i in xrange(self.rank):
+            for j in xrange(self.rank):
                 row_ind = i+base_row
                 col_ind = j+base_col
                 block.append(self.values[row_ind * self.n_col + col_ind])
         return block
 
     def fetch_blocks(self):
-        """Generator to get all puzzle blocks"""
+        """Generator to get all puzzle blocks."""
 
-        for i in range(self.n_col):
+        for i in xrange(self.n_col):
             yield self.fetch_block(i)
 
     def check_properties(self):
-        """Verify that the complete grid has all the properties of a sudoku"""
+        """Verify that the complete grid has all the properties of a sudoku."""
 
         # Base case: there are still zeros
         if 0 in self.values:
@@ -97,21 +102,94 @@ class Sudoku:
         valid_set = set(range(1,self.n_col+1))
         
         # Check all rows, cols, and blocks
-        row_status = all([valid_set == set(row) for row in self.fetch_rows()])
-        col_status = all([valid_set == set(col) for col in self.fetch_cols()])
-        block_status = all([valid_set == set(block) for block in self.fetch_blocks()])
+        row_status = all(valid_set == set(row) for row in self.fetch_rows())
+        col_status = all(valid_set == set(col) for col in self.fetch_cols())
+        block_status = all(valid_set == set(block) for block in self.fetch_blocks())
 
         # There have to be no conflicts for the puzzle to be considered solved
-        return all(row_status,col_status,block_status)
+        return all([row_status,col_status,block_status])
+
+    def assign_value(self,ind,val):
+        """Assign a value to the grid specified by the index"""
+
+        # Make a copy of the choices and exclude the current value
+        bad_vals = list(self.choices[ind])
+        if val in bad_vals:
+            bad_vals.remove(val)
+        else:
+            #Something is wrong if the value I am setting is not one of the choices
+            return False 
+
+        # Assigning a value means removing all but that value from choices
+        if all(self.cull_choices(ind,bad_val) for bad_val in bad_vals):
+            return True
+        else:
+            return False
+
+    def update_grid_values(self):
+        """Update the values list when choices are narrowed down to a single value"""
+        for i in range(self.n_col*self.n_col):
+            if len(self.choices[i]) == 1:
+                self.values[i] = self.choices[i][0]
+
+    def cull_choices(self,ind,val):
+        """Remove val as one of the possible choices for grid[ind]"""
+
+        # Can't eliminate what's not there
+        if val not in self.choices[ind]:
+            return True
+
+        # If we only have one possible choice already
+        # removing it would lead to an inconsistency
+        if len(self.choices[ind]) == 1:
+            return False
+
+        # Eliminate the option
+        self.choices[ind].remove(val)
+
+        # One choice left = eliminate it from the neighbors
+        if len(self.choices[ind]) == 1:
+            best_val = self.choices[ind][0]
+
+            if not all(self.cull_choices(peer,best_val) for peer in self.peers[ind]):
+                return False
+
+        # All constraints are propagated
+        return True
+
+    def find_peers(self, ind):
+        """Calculate a list of indices of the cells peering with the present index"""
+
+        # TODO: This is hideous logic and needs to be refactored
+
+        # Get the location of the box
+        row_ind = ind // self.n_col
+        col_ind = ind % self.n_col
+        block_ind = (row_ind // self.rank) * self.rank + (col_ind // self.rank)
+
+        # Get the indices of the affected peers
+        row_peers = range(row_ind * self.n_col, (row_ind+1) * self.n_col)
+        col_peers = [r*self.n_col + col_ind for r in xrange(self.n_row)]
+
+        block_peers = []
+        for i in xrange(self.rank):
+            for j in xrange(self.rank):
+                row_ind = i + block_ind // self.rank * self.rank
+                col_ind = j + block_ind % self.rank * self.rank
+                block_peers.append(row_ind * self.n_col + col_ind)
+
+        # Combine the indices into a set and remove the useless 
+        return set(row_peers + col_peers + block_peers)-set([ind])
 
 
     def solve_backtrack(self):
-        """Solve the sudoku using the backtracking method"""
+        """Solve the sudoku using the backtracking method."""
 
         # Base case: the puzzle is already solved
         if 0 not in self.values:
-            print("The puzzle is already solved.")
-            return False
+            print("The provided puzzle has no missing slots.")
+            return True
+
 
         return True
 
@@ -143,18 +221,30 @@ def parse_input_file(file_name):
         return None
 
     # Need to convert the strings into digits
-    # Assume that everything that's not a digit is a missing value
-    values = [int(val) if val.isdigit() else 0 for row in inp_vals for val in row]
-    return Sudoku(n_row,n_col,values)
+    # Assume that everything that's not a valid digit is a missing value
+    values = [int(val) if val.isdigit() and int(val) <= n_col else 0 for row in inp_vals for val in row]
+
+    # Instantiate a puzzle to solve
+    sudoku = Sudoku(n_row,n_col)
+
+    # Assign the values
+    for ind,val in enumerate(values):
+        if val != 0:
+            sudoku.values[ind] = val
+            if not sudoku.assign_value(ind,val):
+                print("Error: placement conflict in the provided configuration")
+                return None
+
+    return sudoku
 
 def write_output_file(sudoku,file_name):
-    """Save the CSV representation of a sudoku grid"""
+    """Save the CSV representation of a sudoku grid."""
 
     sol_name = "solution_"+file_name
     try:
         with open(sol_name,'wb') as sud_out:
             sud = csv.writer(sud_out,lineterminator="\n")
-            for row in range(sudoku.n_row):
+            for row in xrange(sudoku.n_row):
                 start = row * sudoku.n_col
                 row_vals = sudoku.values[start : start + sudoku.n_col]
                 sud.writerow(row_vals)
@@ -171,8 +261,16 @@ def main():
     # Parse the argument for the solver
     arg_parser = argparse.ArgumentParser(
                     description="PyDoku: python sudoku solver")
+    
     arg_parser.add_argument("filename", help="input 9x9 CSV with 0 for missing values")
+
+    arg_parser.add_argument("-v",help="Print out intermediate representations of the sudoku to stdout",
+                            action="store_true",default=False)
+
     args = arg_parser.parse_args()
+
+    # Say hello
+    print("Thank you for using PuDoKu, a python sudoku solver.")
 
     # Instantiate the sudoku
     sudoku = parse_input_file(args.filename)
@@ -180,22 +278,29 @@ def main():
         print("Please try again.")
         return
 
-    print("The initial configuration of the puzzle:")
-    print(sudoku)
+    if(args.v):
+        print("The initial configuration of the puzzle:")
+        print(sudoku)
 
-    # Run the solver to find the solution
-    #result = sudoku.solve_backtrack()
+    # Update the display following intial constraint propagation
+    sudoku.update_grid_values()
 
-    # Verify the solution and write it to file
-    valid_solution = sudoku.check_properties()
-    if not valid_solution:
+    # Check if the simple constraints already solved the puzzle
+    # Run the solver to find the solution if needed
+    if not sudoku.check_properties():
+        sudoku.solve_backtrack()
+
+    if not sudoku.check_properties():
         print("The solver failed to find an optimal solution.")
 
     else:
         write_output_file(sudoku,args.filename)
-        print("The final configuration of the puzzle:")
-        print(sudoku)
-        
 
+        if(args.v):
+            print("The final configuration of the puzzle:")
+            print(sudoku)
+
+    print("The solver has completed. Please find the solution in " + "solution_" + args.filename)
+        
 if __name__ == "__main__":
     main()
