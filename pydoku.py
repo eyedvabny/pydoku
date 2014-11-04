@@ -112,6 +112,12 @@ class Sudoku:
     def assign_value(self,ind,val):
         """Assign a value to the grid specified by the index"""
 
+        #print("Assigning {} to {}".format(val,ind))
+
+        if len(self.choices[ind]) == 1 and self.choices[ind][0] == val:
+            #print("Already assigned")
+            return True
+
         # Make a copy of the choices and exclude the current value
         bad_vals = list(self.choices[ind])
         if val in bad_vals:
@@ -135,6 +141,8 @@ class Sudoku:
     def cull_choices(self,ind,val):
         """Remove val as one of the possible choices for grid[ind]"""
 
+        #print("Removing {} from {}".format(val,ind))
+
         # Can't eliminate what's not there
         if val not in self.choices[ind]:
             return True
@@ -150,36 +158,65 @@ class Sudoku:
         # One choice left = eliminate it from the neighbors
         if len(self.choices[ind]) == 1:
             best_val = self.choices[ind][0]
-
             if not all(self.cull_choices(peer,best_val) for peer in self.peers[ind]):
                 return False
 
-        # All constraints are propagated
+        # Having eliminated val from _this_ ind perhaps now we can find a place for it
+        # Look through the row, col and block to see if there is a spot
+        peers = [self.find_row_peers(ind), self.find_col_peers(ind), self.find_block_peers(ind)]
+        for peer in peers:
+            spots = [spot for spot in peer if val in self.choices[spot]]
+
+            # There should definitely be at least one spot in a peer group for the eliminated value
+            if len(spots) == 0:
+               return False
+
+            # If there is only one spot for the eliminated value, plug it in
+            elif len(spots)==1:
+                #print("Just removed {} from {}".format(val,ind))
+                #print("Found a spot for {} in {}".format(val,spots[0]))
+                if not self.assign_value(spots[0],val):
+                    return False
+
+        # All constraints are propagated and holes filled
         return True
 
-    def find_peers(self, ind):
-        """Calculate a list of indices of the cells peering with the present index"""
+    # TODO: This is hideous logic and needs to be refactored
 
-        # TODO: This is hideous logic and needs to be refactored
+    def find_row_peers(self,ind):
+        """Calculate a list of row peers"""
 
-        # Get the location of the box
         row_ind = ind // self.n_col
+        row_peers =  range(row_ind * self.n_col, (row_ind+1) * self.n_col)
+        row_peers.remove(ind)
+        return row_peers
+
+    def find_col_peers(self,ind):
+        """Calculate a list of column peers"""
+        
         col_ind = ind % self.n_col
-        block_ind = (row_ind // self.rank) * self.rank + (col_ind // self.rank)
-
-        # Get the indices of the affected peers
-        row_peers = range(row_ind * self.n_col, (row_ind+1) * self.n_col)
         col_peers = [r*self.n_col + col_ind for r in xrange(self.n_row)]
+        col_peers.remove(ind)
+        return col_peers
 
+    def find_block_peers(self,ind):
+        """Calculate a list of block peers"""
+
+        block_ind = (ind // self.n_col // self.rank) * self.rank + (ind % self.n_col // self.rank)
         block_peers = []
         for i in xrange(self.rank):
             for j in xrange(self.rank):
                 row_ind = i + block_ind // self.rank * self.rank
                 col_ind = j + block_ind % self.rank * self.rank
                 block_peers.append(row_ind * self.n_col + col_ind)
+        block_peers.remove(ind)
+        return block_peers
 
-        # Combine the indices into a set and remove the useless 
-        return set(row_peers + col_peers + block_peers)-set([ind])
+    def find_peers(self, ind):
+        """Calculate a list of indices of the cells peering with the present index"""
+
+        # Combine all peer indices into a set
+        return set(self.find_col_peers(ind) + self.find_row_peers(ind) + self.find_block_peers(ind))
 
 
     def solve_backtrack(self):
@@ -190,8 +227,8 @@ class Sudoku:
             print("The provided puzzle has no missing slots.")
             return True
 
-
-        return True
+        # TODO: Finish the solver implementation
+        return False
 
 #
 # Helper functions for reading and writing CSVs
@@ -289,6 +326,8 @@ def main():
     # Run the solver to find the solution if needed
     if not sudoku.check_properties():
         sudoku.solve_backtrack()
+
+    #print(sudoku)
 
     # If the solver has returned but the puzzle is not complete something wonky happened
     if not sudoku.check_properties():
