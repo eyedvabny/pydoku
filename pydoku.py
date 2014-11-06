@@ -3,6 +3,7 @@ from __future__ import with_statement
 from math import sqrt
 import csv
 import argparse
+import copy
 
 #
 # Class representing a sudoku grid
@@ -11,6 +12,7 @@ import argparse
 class Sudoku:
     def __init__(self, n_row = 9, n_col = 9):
         """Initialize an n x m (9x9) sudoku grid."""
+        
         self.n_row = n_row
         self.n_col = n_col
         self.rank = int(sqrt(n_col))
@@ -26,8 +28,8 @@ class Sudoku:
 
     def __str__(self):
         """Print representation of the sudoku."""
+        
         print_sud = []
-
         for row in xrange(self.n_row):
             # Header bar
             print_sud.append("\t" + "-"*2*self.n_col + "-\n")
@@ -132,12 +134,6 @@ class Sudoku:
         else:
             return False
 
-    def update_grid_values(self):
-        """Update the values list when choices are narrowed down to a single value"""
-        for i in range(self.n_col*self.n_col):
-            if len(self.choices[i]) == 1:
-                self.values[i] = self.choices[i][0]
-
     def cull_choices(self,ind,val):
         """Remove val as one of the possible choices for grid[ind]"""
 
@@ -181,6 +177,13 @@ class Sudoku:
         # All constraints are propagated and holes filled
         return True
 
+    def update_grid_values(self):
+        """Update the values list when choices are narrowed down to a single value"""
+        
+        for i in range(self.n_col*self.n_col):
+            if len(self.choices[i]) == 1:
+                self.values[i] = self.choices[i][0]
+    
     # TODO: This is hideous logic and needs to be refactored
 
     def find_row_peers(self,ind):
@@ -223,11 +226,30 @@ class Sudoku:
         """Solve the sudoku using the backtracking method."""
 
         # Base case: the puzzle is already solved
-        if 0 not in self.values:
-            print("The provided puzzle has no missing slots.")
+        if all(len(choice_list) == 1 for choice_list in self.choices.itervalues()):
+            #print("Backtracking has found a solution.")
             return True
 
-        # TODO: Finish the solver implementation
+        # Get the index of the box with the smallest number of remaining choices
+        grid = min((len(choice_list),ind) for (ind,choice_list) in self.choices.iteritems() if len(choice_list) > 1)[1]
+
+        # Make a copy of the current choices
+        old_choices = copy.deepcopy(self.choices)
+
+        # Try all the choices until something sticks
+        for choice in old_choices[grid]:
+
+            #print("Trying {} for {}. Can do {}.".format(choice,grid,self.choices[grid]))
+
+            # Exit early if soluton is found
+            if self.assign_value(grid,choice) and self.solve_backtrack():
+                return True
+            
+            #print("Did not work. Resetting the grid.")
+            # Reset the grid otherwise
+            self.choices = old_choices
+
+        # Could not find a workable solution even after trying all options
         return False
 
 #
@@ -294,19 +316,13 @@ def write_output_file(sudoku,file_name):
 #
 
 def main():
-
-    # Parse the argument for the solver
-    arg_parser = argparse.ArgumentParser(
-                    description="PyDoku: python sudoku solver")
     
+    arg_parser = argparse.ArgumentParser(description="PyDoku: python sudoku solver")
     arg_parser.add_argument("filename", help="input 9x9 CSV with 0 for missing values")
-
-    arg_parser.add_argument("-v",help="Print out intermediate representations of the sudoku to stdout",
-                            action="store_true",default=False)
-
+    arg_parser.add_argument("-v",help="Print out intermediate representations of \
+                            the sudoku to stdout", action="store_true", default=False)
     args = arg_parser.parse_args()
 
-    # Say hello
     print("Thank you for using PuDoKu, a python sudoku solver.")
 
     # Instantiate the sudoku
@@ -326,8 +342,7 @@ def main():
     # Run the solver to find the solution if needed
     if not sudoku.check_properties():
         sudoku.solve_backtrack()
-
-    #print(sudoku)
+        sudoku.update_grid_values()
 
     # If the solver has returned but the puzzle is not complete something wonky happened
     if not sudoku.check_properties():
@@ -341,7 +356,7 @@ def main():
             print("The final configuration of the puzzle:")
             print(sudoku)
 
-        print("The solver has completed. Please find the solution in " + "solution_" + args.filename)
+        print("The solver has completed. Please find the solution in " + "solution_" + args.filename + ".")
         
 if __name__ == "__main__":
     main()
